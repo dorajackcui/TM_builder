@@ -9,6 +9,16 @@ class ExcelProcessor:
         self.target_folder = ""
         self.log_callback = log_callback or (lambda msg: None)
         self.master_columns = []  # 存储列位置信息
+        self.match_column_index = 1  # 默认使用第二列作为匹配列
+        self.update_column_index = 2  # 默认更新第三列
+
+    def set_update_column(self, column_index):
+        """设置要更新的列索引"""
+        self.update_column_index = column_index
+
+    def set_match_column(self, column_index):
+        """设置用于匹配的列索引"""
+        self.match_column_index = column_index
 
     def set_master_file(self, file_path):
         self.master_file_path = file_path
@@ -36,11 +46,8 @@ class ExcelProcessor:
 
         # 标准化处理，确保所有列的数据类型一致性
         for col in master_df.columns:
-            # 将所有列转换为字符串并清理空白字符
-            if col != 'Key':  # 对非Key列保持原始数据类型
-                master_df[col] = master_df[col].apply(lambda x: '' if pd.isna(x) else str(x).strip())
-            else:
-                master_df[col] = master_df[col].astype(str).str.strip()
+            # 将所有列转换为字符串但不要清理空白字符
+            master_df[col] = master_df[col].apply(lambda x: '' if pd.isna(x) else str(x))
 
         # 创建数据结构：{Key: [中文值, 列2值, 列3值...]}
         self.master_columns = master_df.columns.tolist()[1:]  # 存储列顺序（排除Key列）
@@ -58,6 +65,7 @@ class ExcelProcessor:
                 if file.lower().endswith(('.xlsx', '.xls')):
                     file_paths.append(os.path.join(root, file))
         self.log(f"找到 {len(file_paths)} 个目标文件")
+        self.log(f"匹配列index： {self.match_column_index}")
 
         # 并行处理
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -73,84 +81,60 @@ class ExcelProcessor:
 
     def _process_single_file(self, file_path, master_dict):
         try:
-            # 使用 openpyxl 引擎读取文件以保留格式
-            df = pd.read_excel(file_path, header=0, engine='openpyxl')
-            # 同时打开原始文件以保留格式
+            # 读取文件时就将所有列转换为字符串类型
+            df = pd.read_excel(file_path, header=0, engine='openpyxl', dtype=str)
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
         except Exception as e:
-            self.log(f"文件读取失败：{file_path}\n错误：{str(e)}")
             return 0
-    
+
         updated = 0
         for idx in df.index:
             # 获取并标准化目标文件数据
             try:
+                # 检查列索引是否超出范围
+                if self.match_column_index >= df.shape[1] or self.update_column_index >= df.shape[1]:
+                    continue
+                
+                # 检查第一列（Key列）是否存在
+                if df.shape[1] == 0:
+                    continue
+                    
                 target_key = str(df.iat[idx, 0]).strip()  # 第一列为Key
-                target_chinese = str(df.iat[idx, 1]).strip()  # 第二列为中文列
+                target_match_value = str(df.iat[idx, self.match_column_index]).strip()  # 用户指定的匹配列
                 
                 # 空值检查
                 if pd.isna(target_key) or target_key.lower() == "nan" or target_key == "":
                     continue
-                if pd.isna(target_chinese) or target_chinese.lower() == "nan" or target_chinese == "":
+                if pd.isna(target_match_value) or target_match_value.lower() == "nan" or target_match_value == "":
                     continue
             except Exception as e:
-                self.log(f"数据读取错误：第 {idx+1} 行 - {str(e)}")
                 continue
     
             # 匹配 Master 数据
             if target_key in master_dict:
                 master_values = master_dict[target_key]
                 
-                # 检查中文列是否匹配
-                if target_chinese == master_values[0]:
-                    # 按列位置复制数据，保持数据类型
-                    for col_offset, value in enumerate(master_values[1:], start=2):
-                        if col_offset >= df.shape[1]:
-                            break
-                        try:
-                            # 尝试保持原始数据类型
-                            original_value = df.iat[idx, col_offset]
-                            if pd.isna(original_value):
-                                if pd.isna(value):
-                                    df.iat[idx, col_offset] = pd.NA
-                                else:
-                                    # 根据原始列的数据类型进行转换
-                                    try:
-                                        if df[df.columns[col_offset]].dtype in ['int64', 'float64']:
-                                            df.iat[idx, col_offset] = float(value) if '.' in str(value) else int(value)
-                                        else:
-                                            df.iat[idx, col_offset] = str(value)
-                                    except (ValueError, TypeError):
-                                        df.iat[idx, col_offset] = str(value)
-                            else:
-                                # 如果原始值是数字类型，尝试转换新值为相同类型
-                                if isinstance(original_value, (int, float)):
-                                    try:
-                                        df.iat[idx, col_offset] = float(value) if '.' in str(value) else int(value)
-                                    except (ValueError, TypeError):
-                                        df.iat[idx, col_offset] = str(value)
-                                else:
-                                    df.iat[idx, col_offset] = str(value) if value is not None else ''
-                        except Exception as e:
-                            self.log(f"数据转换错误：第 {idx+1} 行，第 {col_offset+1} 列 - {str(e)}")
-                            continue
-                    updated += 1
-                    # self.log(f"文件 {os.path.basename(file_path)} 第 {idx+1} 行已更新")
-                else:
-                    # self.log(f"文件 {os.path.basename(file_path)} 第 {idx+1} 行中文列不匹配")
-                    # self.log(f"文件 {os.path.basename(file_path)} 第 {idx+1} 行 Key 不存在")
-                    pass
+                # 检查匹配列是否匹配
+                if target_match_value == master_values[self.match_column_index - 1]:
+                    try:
+                        # 只更新指定的列
+                        update_value = master_values[self.update_column_index - 1]
+                        df.iat[idx, self.update_column_index] = str(update_value) if update_value is not None else ''
+                        updated += 1
+                    except Exception as e:
+                        continue
     
         try:
             # 将更新后的数据写回到原始工作表中，保留格式
             for row_idx in range(len(df)):
                 for col_idx in range(len(df.columns)):
-                    ws.cell(row=row_idx + 2, column=col_idx + 1).value = df.iat[row_idx, col_idx]
+                    cell_value = df.iat[row_idx, col_idx]
+                    cell = ws.cell(row=row_idx + 2, column=col_idx + 1)
+                    cell.value = cell_value
             
             # 保存工作簿
             wb.save(file_path)
         except Exception as e:
-            self.log(f"文件保存失败：{file_path}\n错误：{str(e)}")
             return 0
         return updated
