@@ -1,13 +1,13 @@
 import os
 os.environ['TK_SILENCE_DEPRECATION'] = '1'
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from excel_processor import ExcelProcessor
 
 class ExcelUpdaterGUI:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Excel 批量更新工具")
+        self.root.title("Excel 工具集")
         self.root.geometry("400x300")
         
         # 设置窗口背景色
@@ -24,13 +24,44 @@ class ExcelUpdaterGUI:
         self.update_column_var = tk.StringVar(value="3")
         self.update_column_options = ["3", "4"]
 
-        self.create_widgets()
+        # 设置选项卡样式
+        style = ttk.Style()
+        style.theme_use('clam')  # 使用兼容性更好的主题
+        style.configure('TNotebook', background='#f0f0f0', borderwidth=0)
+        style.configure('TNotebook.Tab', 
+            padding=[20, 8], 
+            background='#e0e0e0', 
+            foreground='#333333', 
+            borderwidth=1,
+            font=('Arial', 10)
+        )
+        style.map('TNotebook.Tab',
+            background=[('selected', '#4a90e2'), ('active', '#b8d6f5')],
+            foreground=[('selected', 'white'), ('active', '#333333')]
+        )
+        style.configure('TFrame', background='#f0f0f0')
 
-    def create_widgets(self):
+        # 创建选项卡控件
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(expand=True, fill='both', padx=5, pady=5)
+
+        # 创建批量更新工具选项卡
+        self.updater_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.updater_frame, text='批量更新工具')
+
+        # 创建列清空工具选项卡
+        self.clearer_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.clearer_frame, text='列清空工具')
+
+        # 初始化两个工具
+        self.init_updater()
+        self.init_clearer()
+
+    def init_updater(self):
         # 统一按钮样式
         button_style = {
-            'bg': '#4a90e2',  # 按钮背景色
-            'fg': 'white',    # 按钮文字颜色
+            'bg': '#4a90e2',
+            'fg': 'white',
             'font': ('Arial', 10),
             'relief': 'raised',
             'padx': 20
@@ -44,18 +75,18 @@ class ExcelUpdaterGUI:
         }
 
         # 文件选择按钮
-        btn_master = tk.Button(self.root, text="选择 Master 总表", **button_style, command=self.select_master_file)
+        btn_master = tk.Button(self.updater_frame, text="选择 Master 总表", **button_style, command=self.select_master_file)
         btn_master.pack(pady=10)
-        self.master_label = tk.Label(self.root, text="未选择文件", **label_style)
+        self.master_label = tk.Label(self.updater_frame, text="未选择文件", **label_style)
         self.master_label.pack()
 
-        btn_folder = tk.Button(self.root, text="选择目标文件夹", **button_style, command=self.select_target_folder)
+        btn_folder = tk.Button(self.updater_frame, text="选择目标文件夹", **button_style, command=self.select_target_folder)
         btn_folder.pack(pady=10)
-        self.folder_label = tk.Label(self.root, text="未选择文件夹", **label_style)
+        self.folder_label = tk.Label(self.updater_frame, text="未选择文件夹", **label_style)
         self.folder_label.pack()
 
         # 匹配列选择
-        match_frame = tk.Frame(self.root, bg='#f0f0f0')
+        match_frame = tk.Frame(self.updater_frame, bg='#f0f0f0')
         match_frame.pack(pady=10)
         tk.Label(match_frame, text="匹配列：", **label_style).pack(side=tk.LEFT)
         match_dropdown = tk.OptionMenu(match_frame, self.match_column_var, *self.match_column_options)
@@ -65,7 +96,7 @@ class ExcelUpdaterGUI:
         tk.Label(match_frame, text="列", **label_style).pack(side=tk.LEFT)
 
         # 更新列选择
-        update_frame = tk.Frame(self.root, bg='#f0f0f0')
+        update_frame = tk.Frame(self.updater_frame, bg='#f0f0f0')
         update_frame.pack(pady=10)
         tk.Label(update_frame, text="更新列：", **label_style).pack(side=tk.LEFT)
         update_dropdown = tk.OptionMenu(update_frame, self.update_column_var, *self.update_column_options)
@@ -75,7 +106,7 @@ class ExcelUpdaterGUI:
         tk.Label(update_frame, text="列", **label_style).pack(side=tk.LEFT)
 
         # 执行按钮
-        btn_start = tk.Button(self.root, text="开始处理", **button_style, command=self.process_files)
+        btn_start = tk.Button(self.updater_frame, text="开始处理", **button_style, command=self.process_files)
         btn_start.pack(pady=10)
 
     def select_master_file(self):
@@ -118,6 +149,10 @@ class ExcelUpdaterGUI:
             messagebox.showinfo("完成", f"共更新 {updated_count} 行。")
         except Exception as e:
             messagebox.showerror("错误", str(e))
+
+    def init_clearer(self):
+        # 在这里添加列清空工具的界面元素
+        pass
 
     def run(self):
         self.root.mainloop()
