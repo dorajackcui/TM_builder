@@ -101,7 +101,7 @@ class ExcelProcessor:
                     continue
                     
                 target_key = str(df.iat[idx, 0]).strip()  # 第一列为Key
-                target_match_value = str(df.iat[idx, self.match_column_index]).strip()  # 用户指定的匹配列
+                target_match_value = str(df.iat[idx, self.match_column_index])  # 用户指定的匹配列
                 
                 # 空值检查
                 if pd.isna(target_key) or target_key.lower() == "nan" or target_key == "":
