@@ -35,27 +35,30 @@ class ExcelProcessor:
 
         try:
             self.log("正在读取 Master 文件...")
-            master_df = pd.read_excel(self.master_file_path, keep_default_na=False)
+            # 读取 Master 文件时就将所有列转换为字符串类型，只读取必要的列
+            usecols = [1, self.match_column_index+1, self.update_column_index+1]  # 1是Key列(B列)
+            master_df = pd.read_excel(
+                self.master_file_path,
+                engine='openpyxl',
+                dtype=str,
+                keep_default_na=False,
+                usecols=usecols
+            )
         except Exception as e:
             raise Exception(f"读取 Master 文件失败：{e}")
 
-        # 预处理 Master 文件
-        master_df = master_df.drop(master_df.columns[0], axis=1)  # 删除 A 列
-        if "Key" not in master_df.columns:
-            raise ValueError("Master 文件中没有找到 'Key' 列！")
-
         # 标准化处理，确保所有列的数据类型一致性
         for col in master_df.columns:
-            # 将所有列转换为字符串，保留None字符串
             master_df[col] = master_df[col].apply(lambda x: str(x) if x is not None else 'None')
 
-        # 创建数据结构：{Key: [中文值, 列2值, 列3值...]}
-        self.master_columns = master_df.columns.tolist()[1:]  # 存储列顺序（排除Key列）
+        # 创建数据结构：{Key: [匹配列值, 更新列值]}
         master_data = master_df.values
-        master_dict = {
-            row[0]: list(row[1:])  # [中文值, 列2值, 列3值...]
-            for row in master_data
-        }
+        master_dict = {}
+        for row in master_data:
+            key = row[0]  # Key列现在是第一列，因为我们只读取了需要的列
+            match_val = row[1]  # 匹配列是第二列
+            update_val = row[2]  # 更新列是第三列
+            master_dict[key] = [match_val, update_val]
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
         # 添加调试日志，打印特定key的内容
@@ -90,64 +93,58 @@ class ExcelProcessor:
 
     def _process_single_file(self, file_path, master_dict):
         try:
-            # 读取文件时就将所有列转换为字符串类型
-            df = pd.read_excel(file_path, header=0, engine='openpyxl', dtype=str, keep_default_na=False)
+            # 只读取需要的列（Key列、匹配列和更新列）
+            usecols = [0, self.match_column_index, self.update_column_index]  # 0是Key列
+            df = pd.read_excel(
+                file_path,
+                header=0,
+                usecols=usecols,
+                dtype=str,
+                keep_default_na=False
+            )
             
-            # 添加与 master 文件相同的数据处理逻辑
+            # 标准化处理数据
             for col in df.columns:
                 df[col] = df[col].apply(lambda x: str(x) if x is not None else 'None')
                 
+            # 加载工作簿以保持格式
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
         except Exception as e:
             return 0
 
+        # 创建一个字典来存储需要更新的单元格位置和值
+        updates = {}
         updated = 0
+        
         for idx in df.index:
-            # 获取并标准化目标文件数据
             try:
-                # 检查列索引是否超出范围
-                if self.match_column_index >= df.shape[1] or self.update_column_index >= df.shape[1]:
-                    continue
-                
-                # 检查第一列（Key列）是否存在
-                if df.shape[1] == 0:
-                    continue
-                    
+                # 获取并标准化目标文件数据
                 target_key = str(df.iat[idx, 0]).strip()  # 第一列为Key
-                target_match_value = str(df.iat[idx, self.match_column_index])  # 用户指定的匹配列
+                target_match_value = str(df.iat[idx, 1])  # 匹配列（在读取时已经调整为第二列）
                 
                 # 空值检查
                 if pd.isna(target_key) or target_key == "":
                     continue
-                # 修改匹配列的空值检查逻辑，只有真正的空值和空字符串才跳过
                 if target_match_value == "":
                     continue
+                    
+                # 匹配 Master 数据并更新
+                if target_key in master_dict:
+                    master_values = master_dict[target_key]
+                    if target_match_value == master_values[0]:
+                        # 获取实际的Excel列号
+                        update_col = self.update_column_index + 1
+                        updates[(idx + 2, update_col)] = master_values[1]
+                        updated += 1
             except Exception as e:
                 continue
-    
-            # 匹配 Master 数据
-            if target_key in master_dict:
-                master_values = master_dict[target_key]
                 
-                # 检查匹配列是否匹配
-                if target_match_value == master_values[self.match_column_index - 1]:
-                    try:
-                        # 只更新指定的列
-                        update_value = master_values[self.update_column_index - 1]
-                        df.iat[idx, self.update_column_index] = update_value
-                        updated += 1
-                    except Exception as e:
-                        continue
+        # 批量更新单元格
+        for (row, col), value in updates.items():
+            ws.cell(row=row, column=col).value = value
     
         try:
-            # 将更新后的数据写回到原始工作表中，保留格式
-            for row_idx in range(len(df)):
-                for col_idx in range(len(df.columns)):
-                    cell_value = df.iat[row_idx, col_idx]
-                    cell = ws.cell(row=row_idx + 2, column=col_idx + 1)
-                    cell.value = cell_value
-            
             # 保存工作簿
             wb.save(file_path)
         except Exception as e:
