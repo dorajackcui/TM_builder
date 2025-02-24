@@ -35,7 +35,7 @@ class ExcelProcessor:
 
         try:
             self.log("正在读取 Master 文件...")
-            master_df = pd.read_excel(self.master_file_path)
+            master_df = pd.read_excel(self.master_file_path, keep_default_na=False)
         except Exception as e:
             raise Exception(f"读取 Master 文件失败：{e}")
 
@@ -46,8 +46,8 @@ class ExcelProcessor:
 
         # 标准化处理，确保所有列的数据类型一致性
         for col in master_df.columns:
-            # 将所有列转换为字符串但不要清理空白字符
-            master_df[col] = master_df[col].apply(lambda x: '' if pd.isna(x) else str(x))
+            # 将所有列转换为字符串，保留None字符串
+            master_df[col] = master_df[col].apply(lambda x: str(x) if x is not None else 'None')
 
         # 创建数据结构：{Key: [中文值, 列2值, 列3值...]}
         self.master_columns = master_df.columns.tolist()[1:]  # 存储列顺序（排除Key列）
@@ -57,6 +57,15 @@ class ExcelProcessor:
             for row in master_data
         }
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
+        
+        # # 添加调试日志，打印特定key的内容
+        # debug_key1 = "4D03332141C5B492D7E97891939EDDFB"
+        # debug_key2 = "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
+        # if debug_key1 or debug_key2 in master_dict:
+        #     self.log(f"Debug - Key '{debug_key1}' 的内容: {master_dict[debug_key1]}")
+        #     self.log(f"Debug - Key '{debug_key2}' 的内容: {master_dict[debug_key2]}")
+        # else:
+        #     self.log(f"Debug - 未找到Key: {debug_key1}")
 
         # 收集目标文件
         file_paths = []
@@ -82,7 +91,7 @@ class ExcelProcessor:
     def _process_single_file(self, file_path, master_dict):
         try:
             # 读取文件时就将所有列转换为字符串类型
-            df = pd.read_excel(file_path, header=0, engine='openpyxl', dtype=str)
+            df = pd.read_excel(file_path, header=0, engine='openpyxl', dtype=str, keep_default_na=False)
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
         except Exception as e:
@@ -104,9 +113,10 @@ class ExcelProcessor:
                 target_match_value = str(df.iat[idx, self.match_column_index])  # 用户指定的匹配列
                 
                 # 空值检查
-                if pd.isna(target_key) or target_key.lower() == "nan" or target_key == "":
+                if pd.isna(target_key) or target_key == "":
                     continue
-                if pd.isna(target_match_value) or target_match_value.lower() == "nan" or target_match_value == "":
+                # 修改匹配列的空值检查逻辑，只有真正的空值和空字符串才跳过
+                if target_match_value == "":
                     continue
             except Exception as e:
                 continue
@@ -120,7 +130,7 @@ class ExcelProcessor:
                     try:
                         # 只更新指定的列
                         update_value = master_values[self.update_column_index - 1]
-                        df.iat[idx, self.update_column_index] = str(update_value) if update_value is not None else ''
+                        df.iat[idx, self.update_column_index] = update_value
                         updated += 1
                     except Exception as e:
                         continue
