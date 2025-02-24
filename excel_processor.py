@@ -92,6 +92,11 @@ class ExcelProcessor:
         try:
             # 读取文件时就将所有列转换为字符串类型
             df = pd.read_excel(file_path, header=0, engine='openpyxl', dtype=str, keep_default_na=False)
+            
+            # 添加与 master 文件相同的数据处理逻辑
+            for col in df.columns:
+                df[col] = df[col].apply(lambda x: str(x) if x is not None else 'None')
+                
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
         except Exception as e:
