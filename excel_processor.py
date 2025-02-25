@@ -35,118 +35,110 @@ class ExcelProcessor:
 
         try:
             self.log("正在读取 Master 文件...")
-            # 读取 Master 文件时就将所有列转换为字符串类型，只读取必要的列
+            # 优化：只读取必要的列，并直接指定数据类型为字符串
             usecols = [1, self.match_column_index+1, self.update_column_index+1]  # 1是Key列(B列)
             master_df = pd.read_excel(
                 self.master_file_path,
                 engine='openpyxl',
-                dtype=str,
+                dtype={col: str for col in range(len(usecols))},  # 直接指定所有列为字符串类型
                 keep_default_na=False,
                 usecols=usecols
             )
         except Exception as e:
             raise Exception(f"读取 Master 文件失败：{e}")
 
-        # 标准化处理，确保所有列的数据类型一致性
-        for col in master_df.columns:
-            master_df[col] = master_df[col].apply(lambda x: str(x) if x is not None else 'None')
-
-        # 创建数据结构：{Key: [匹配列值, 更新列值]}
-        master_data = master_df.values
+        # 优化：直接在创建字典时处理数据，避免额外的循环
         master_dict = {}
+        master_data = master_df.values
         for row in master_data:
-            key = row[0]  # Key列现在是第一列，因为我们只读取了需要的列
-            match_val = row[1]  # 匹配列是第二列
-            update_val = row[2]  # 更新列是第三列
-            master_dict[key] = [match_val, update_val]
+            key = row[0].strip() if row[0] else ''  # 直接处理空值情况
+            if key:  # 只处理非空key
+                match_val = row[1] if row[1] else ''
+                update_val = row[2] if row[2] else ''
+                if match_val:  # 只存储有效的匹配值
+                    master_dict[key] = [match_val, update_val]
+
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
         # 添加调试日志，打印特定key的内容
-        debug_key1 = "4D03332141C5B492D7E97891939EDDFB"
-        debug_key2 = "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
-        if debug_key1 or debug_key2 in master_dict:
-            self.log(f"Debug - Key '{debug_key1}' 的内容: {master_dict[debug_key1]}")
-            self.log(f"Debug - Key '{debug_key2}' 的内容: {master_dict[debug_key2]}")
-        else:
-            self.log(f"Debug - 未找到Key: {debug_key1}")
+        # debug_key1 = "4D03332141C5B492D7E97891939EDDFB"
+        # debug_key2 = "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
+        # if debug_key1 or debug_key2 in master_dict:
+        #     self.log(f"Debug - Key '{debug_key1}' 的内容: {master_dict[debug_key1]}")
+        #     self.log(f"Debug - Key '{debug_key2}' 的内容: {master_dict[debug_key2]}")
+        # else:
+        #     self.log(f"Debug - 未找到Key: {debug_key1}")
 
         # 收集目标文件
         file_paths = []
         for root, _, files in os.walk(self.target_folder):
-            for file in files:
-                if file.lower().endswith(('.xlsx', '.xls')):
-                    file_paths.append(os.path.join(root, file))
-        self.log(f"找到 {len(file_paths)} 个目标文件")
-        self.log(f"匹配列index： {self.match_column_index}")
-
-        # 并行处理
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            results = executor.map(
-                self._process_single_file,
-                file_paths,
-                [master_dict]*len(file_paths)
+            file_paths.extend(
+                os.path.join(root, file)
+                for file in files
+                if file.lower().endswith(('.xlsx', '.xls'))
             )
+        self.log(f"找到 {len(file_paths)} 个目标文件")
 
-        updated_count = sum(results)
+        # 优化：调整线程池大小以获得更好的性能
+        max_workers = min(32, len(file_paths))  # 限制最大线程数
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(self._process_single_file, fp, master_dict) for fp in file_paths]
+            updated_count = sum(future.result() for future in concurrent.futures.as_completed(futures))
+
         self.log(f"处理完成，共更新 {updated_count} 处数据")
         return updated_count
 
     def _process_single_file(self, file_path, master_dict):
         try:
-            # 只读取需要的列（Key列、匹配列和更新列）
-            usecols = [0, self.match_column_index, self.update_column_index]  # 0是Key列
+            # 优化：只读取必要的列，并直接指定数据类型
+            usecols = [0, self.match_column_index, self.update_column_index]
             df = pd.read_excel(
                 file_path,
                 header=0,
                 usecols=usecols,
-                dtype=str,
+                dtype={col: str for col in range(len(usecols))},
                 keep_default_na=False
             )
             
-            # 标准化处理数据
-            for col in df.columns:
-                df[col] = df[col].apply(lambda x: str(x) if x is not None else 'None')
-                
+            # 优化：使用向量化操作处理数据
+            df = df.fillna('')  # 替换所有NaN为空字符串
+            df = df.astype(str)  # 确保所有数据为字符串类型
+            
             # 加载工作簿以保持格式
             wb = openpyxl.load_workbook(file_path)
             ws = wb.active
         except Exception as e:
             return 0
 
-        # 创建一个字典来存储需要更新的单元格位置和值
         updates = {}
         updated = 0
         
-        for idx in df.index:
+        # 优化：批量处理数据
+        df_array = df.values
+        for idx, row in enumerate(df_array):
             try:
-                # 获取并标准化目标文件数据
-                target_key = str(df.iat[idx, 0]).strip()  # 第一列为Key
-                target_match_value = str(df.iat[idx, 1])  # 匹配列（在读取时已经调整为第二列）
+                target_key = row[0].strip()
+                target_match_value = row[1]
                 
-                # 空值检查
-                if pd.isna(target_key) or target_key == "":
+                if not target_key or not target_match_value:
                     continue
-                if target_match_value == "":
-                    continue
-                    
-                # 匹配 Master 数据并更新
+                
                 if target_key in master_dict:
                     master_values = master_dict[target_key]
                     if target_match_value == master_values[0]:
-                        # 获取实际的Excel列号
                         update_col = self.update_column_index + 1
                         updates[(idx + 2, update_col)] = master_values[1]
                         updated += 1
-            except Exception as e:
+            except Exception:
                 continue
-                
+
         # 批量更新单元格
-        for (row, col), value in updates.items():
-            ws.cell(row=row, column=col).value = value
-    
-        try:
-            # 保存工作簿
-            wb.save(file_path)
-        except Exception as e:
-            return 0
+        if updates:
+            for (row, col), value in updates.items():
+                ws.cell(row=row, column=col).value = value
+            try:
+                wb.save(file_path)
+            except Exception:
+                return 0
+
         return updated
