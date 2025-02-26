@@ -34,8 +34,12 @@ class ExcelProcessor:
         if not self.master_file_path or not self.target_folder:
             raise ValueError("请先选择 Master 文件和目标文件夹！")
 
+        import time
+        start_time = time.time()
+
         try:
             self.log("正在读取 Master 文件...")
+            master_start_time = time.time()
             # 优化：只读取必要的列，并直接指定数据类型为字符串
             usecols = [1, self.match_column_index+1, self.update_column_index+1]  # 1是Key列(B列)
             master_df = pd.read_excel(
@@ -45,6 +49,8 @@ class ExcelProcessor:
                 keep_default_na=False,
                 usecols=usecols
             )
+            master_end_time = time.time()
+            self.log(f"Master文件读取耗时: {master_end_time - master_start_time:.2f}秒")
         except Exception as e:
             raise Exception(f"读取 Master 文件失败：{e}")
 
@@ -71,6 +77,7 @@ class ExcelProcessor:
         #     self.log(f"Debug - 未找到Key: {debug_key1}")
 
         # 收集目标文件
+        
         file_paths = []
         for root, _, files in os.walk(self.target_folder):
             file_paths.extend(
@@ -78,104 +85,132 @@ class ExcelProcessor:
                 for file in files
                 if file.lower().endswith(('.xlsx', '.xls'))
             )
+
         self.log(f"找到 {len(file_paths)} 个目标文件")
 
         # 优化：调整线程池大小以获得更好的性能
+        process_start_time = time.time()
         max_workers = min(32, len(file_paths))  # 限制最大线程数
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(self._process_single_file, fp, master_dict) for fp in file_paths]
             updated_count = sum(future.result() for future in concurrent.futures.as_completed(futures))
+        process_end_time = time.time()
 
-        # 调用后处理方法以确保Excel文件兼容性
-        self._post_process(file_paths)
-
+        total_time = time.time() - start_time
+        self.log(f"文件处理耗时: {process_end_time - process_start_time:.2f}秒")
+        self.log(f"总耗时: {total_time:.2f}秒")
         self.log(f"处理完成，共更新 {updated_count} 处数据")
+
+        # 添加后处理步骤
+        self.log("开始后处理步骤...")
+        self._post_process(file_paths)
+        self.log("后处理步骤完成")
+
         return updated_count
 
     def _process_single_file(self, file_path, master_dict):
-        try:
-            # 优化：只读取必要的列，并直接指定数据类型
-            usecols = [0, self.match_column_index, self.update_column_index]
-            df = pd.read_excel(
-                file_path,
-                header=0,
-                usecols=usecols,
-                dtype={col: str for col in range(len(usecols))},
-                keep_default_na=False
-            )
-            
-            # 优化：使用向量化操作处理数据
-            df = df.fillna('')  # 替换所有NaN为空字符串
-            df = df.astype(str)  # 确保所有数据为字符串类型
-            
-            # 加载工作簿以保持格式
-            wb = openpyxl.load_workbook(file_path)
-            ws = wb.active
-        except Exception as e:
-            return 0
-
         updates = {}
         updated = 0
         
-        # 优化：批量处理数据
-        df_array = df.values
-        for idx, row in enumerate(df_array):
-            try:
-                target_key = row[0].strip()
-                target_match_value = row[1]
-                
-                if not target_key or not target_match_value:
+        try:
+            # 使用openpyxl的只读模式读取文件
+            wb = openpyxl.load_workbook(filename=file_path, read_only=True)
+            ws = wb.active
+            
+            # 获取目标列的索引
+            key_col = 'A'  # 第一列
+            match_col = chr(ord('A') + self.match_column_index)  # 匹配列
+            
+            # 逐行处理数据，跳过表头
+            for idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+                try:
+                    # 只读取需要的列
+                    key_cell = row[0]
+                    match_cell = row[self.match_column_index]
+                    
+                    # 确保单元格值转换为字符串
+                    target_key = str(key_cell.value).strip() if key_cell.value else ''
+                    target_match_value = str(match_cell.value) if match_cell.value else ''
+                    
+                    if not target_key or not target_match_value:
+                        continue
+                    
+                    if target_key in master_dict:
+                        master_values = master_dict[target_key]
+                        if target_match_value == master_values[0]:
+                            update_col = self.update_column_index + 1
+                            updates[(idx, update_col)] = master_values[1]
+                            updated += 1
+                except Exception:
                     continue
+            
+            # 关闭只读工作簿
+            wb.close()
+            
+            # 如果有更新，重新打开文件进行写入
+            if updates:
+                wb = openpyxl.load_workbook(file_path)
+                ws = wb.active
                 
-                if target_key in master_dict:
-                    master_values = master_dict[target_key]
-                    if target_match_value == master_values[0]:
-                        update_col = self.update_column_index + 1
-                        updates[(idx + 2, update_col)] = master_values[1]
-                        updated += 1
-            except Exception:
-                continue
-
-        # 批量更新单元格
-        if updates:
-            for (row, col), value in updates.items():
-                ws.cell(row=row, column=col).value = value
-            try:
-                wb.save(file_path)
-            except Exception:
-                return 0
-
+                # 批量更新单元格
+                for (row, col), value in updates.items():
+                    ws.cell(row=row, column=col).value = value
+                try:
+                    wb.save(file_path)
+                except Exception:
+                    return 0
+                finally:
+                    wb.close()
+                    
+        except Exception as e:
+            return 0
+            
         return updated
         
     def _post_process(self, file_paths):
         """使用win32com.client处理Excel文件以确保兼容性，采用并行处理提高效率"""
         try:
-            # 创建Excel应用程序实例
+            post_process_start_time = time.time()
+            # 根据CPU核心数和文件数量动态调整线程池大小
+            cpu_count = os.cpu_count() or 4
+            max_workers = min(cpu_count * 2, len(file_paths), 32)  # 限制最大线程数
+            
+            # 将文件分批处理，每批次处理部分文件
+            batch_size = 10  # 每批处理10个文件
+            file_batches = [file_paths[i:i + batch_size] for i in range(0, len(file_paths), batch_size)]
+            
+            for batch in file_batches:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # 为每个文件创建一个处理任务，每个任务使用独立的Excel实例
+                    futures = [executor.submit(self._process_single_file_post, file_path) 
+                              for file_path in batch]
+                    # 等待当前批次完成
+                    concurrent.futures.wait(futures)
+            
+            post_process_end_time = time.time()
+            self.log(f"后处理步骤耗时: {post_process_end_time - post_process_start_time:.2f}秒")
+                    
+        except Exception as e:
+            self.log(f"后处理步骤失败：{str(e)}")
+    
+    def _process_single_file_post(self, file_path):
+        """处理单个文件的后处理逻辑，使用独立的Excel实例"""
+        excel_app = None
+        try:
+            # 为每个线程创建独立的Excel实例
             excel_app = Dispatch('Excel.Application')
             excel_app.Visible = False
             excel_app.DisplayAlerts = False
             
-            # 计算每个线程处理的文件数量，限制最大线程数为32
-            max_workers = min(32, len(file_paths))
-            
-            # 使用线程池并行处理文件
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # 为每个文件创建一个处理任务
-                futures = [executor.submit(self._process_single_file_post, file_path, excel_app) 
-                          for file_path in file_paths]
-                # 等待所有任务完成
-                concurrent.futures.wait(futures)
-            
-            # 关闭Excel应用程序
-            excel_app.Quit()
-        except Exception as e:
-            self.log(f"Excel应用程序初始化失败：{str(e)}")
-    
-    def _process_single_file_post(self, file_path, excel_app):
-        """处理单个文件的后处理逻辑"""
-        try:
             wb = excel_app.Workbooks.Open(file_path)
             wb.Save()
             wb.Close(True)
         except Exception as e:
             self.log(f"后处理文件 {file_path} 时出错：{str(e)}")
+        finally:
+            # 确保Excel实例被正确关闭
+            if excel_app:
+                try:
+                    excel_app.Quit()
+                except:
+                    pass
