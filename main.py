@@ -69,6 +69,26 @@ class ExcelUpdaterGUI:
         self.init_updater()
         self.init_clearer()
 
+    def _configure_styles(self):
+        style = ttk.Style()
+        style.theme_use('clam')  # 使用兼容性更好的主题
+        
+        # 配置Notebook样式
+        style.configure('TNotebook', background='#f0f0f0', borderwidth=0)
+        style.configure('TNotebook.Tab', 
+            padding=[20, 8], 
+            background='#e0e0e0', 
+            foreground='#333333', 
+            borderwidth=1,
+            font=('Arial', 10)
+        )
+        style.map('TNotebook.Tab',
+            padding=[('selected', [20, 8])],
+            background=[('selected', '#4a90e2'), ('active', '#b8d6f5')],
+            foreground=[('selected', 'white'), ('active', '#333333')]
+        )
+        style.configure('TFrame', background='#f0f0f0')
+
     def init_updater(self):
         # 统一按钮样式
         button_style = {
