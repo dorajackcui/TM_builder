@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import concurrent.futures
 import openpyxl
+from win32com.client import Dispatch
 
 class ExcelProcessor:
     def __init__(self, log_callback=None):
@@ -85,6 +86,9 @@ class ExcelProcessor:
             futures = [executor.submit(self._process_single_file, fp, master_dict) for fp in file_paths]
             updated_count = sum(future.result() for future in concurrent.futures.as_completed(futures))
 
+        # 调用后处理方法以确保Excel文件兼容性
+        self._post_process(file_paths)
+
         self.log(f"处理完成，共更新 {updated_count} 处数据")
         return updated_count
 
@@ -142,3 +146,36 @@ class ExcelProcessor:
                 return 0
 
         return updated
+        
+    def _post_process(self, file_paths):
+        """使用win32com.client处理Excel文件以确保兼容性，采用并行处理提高效率"""
+        try:
+            # 创建Excel应用程序实例
+            excel_app = Dispatch('Excel.Application')
+            excel_app.Visible = False
+            excel_app.DisplayAlerts = False
+            
+            # 计算每个线程处理的文件数量，限制最大线程数为32
+            max_workers = min(32, len(file_paths))
+            
+            # 使用线程池并行处理文件
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 为每个文件创建一个处理任务
+                futures = [executor.submit(self._process_single_file_post, file_path, excel_app) 
+                          for file_path in file_paths]
+                # 等待所有任务完成
+                concurrent.futures.wait(futures)
+            
+            # 关闭Excel应用程序
+            excel_app.Quit()
+        except Exception as e:
+            self.log(f"Excel应用程序初始化失败：{str(e)}")
+    
+    def _process_single_file_post(self, file_path, excel_app):
+        """处理单个文件的后处理逻辑"""
+        try:
+            wb = excel_app.Workbooks.Open(file_path)
+            wb.Save()
+            wb.Close(True)
+        except Exception as e:
+            self.log(f"后处理文件 {file_path} 时出错：{str(e)}")
