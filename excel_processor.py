@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import concurrent.futures
 import openpyxl
+import time
 from win32com.client import Dispatch
 
 class ExcelProcessor:
@@ -34,7 +35,7 @@ class ExcelProcessor:
         if not self.master_file_path or not self.target_folder:
             raise ValueError("请先选择 Master 文件和目标文件夹！")
 
-        import time
+        # 记录开始时间
         start_time = time.time()
 
         try:
@@ -168,33 +169,21 @@ class ExcelProcessor:
         return updated
         
     def _post_process(self, file_paths):
-        """使用win32com.client处理Excel文件以确保兼容性，采用并行处理提高效率"""
+        """使用win32com.client处理Excel文件以确保兼容性，采用最简单的单线程处理方式"""
         try:
             post_process_start_time = time.time()
-            # 根据CPU核心数和文件数量动态调整线程池大小
-            cpu_count = os.cpu_count() or 4
-            max_workers = min(cpu_count * 2, len(file_paths), 32)  # 限制最大线程数
             
-            # 将文件分批处理，每批次处理部分文件
-            batch_size = 10  # 每批处理10个文件
-            file_batches = [file_paths[i:i + batch_size] for i in range(0, len(file_paths), batch_size)]
-            
-            for batch in file_batches:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    # 为每个文件创建一个处理任务，每个任务使用独立的Excel实例
-                    futures = [executor.submit(self._process_single_file_post, file_path) 
-                              for file_path in batch]
-                    # 等待当前批次完成
-                    concurrent.futures.wait(futures)
+            # 简单循环处理每个文件
+            for file_path in file_paths:
+                self._process_single_file_post(file_path)
             
             post_process_end_time = time.time()
             self.log(f"后处理步骤耗时: {post_process_end_time - post_process_start_time:.2f}秒")
                     
         except Exception as e:
             self.log(f"后处理步骤失败：{str(e)}")
-    
     def _process_single_file_post(self, file_path):
-        """处理单个文件的后处理逻辑，使用独立的Excel实例"""
+        """处理单个文件的后处理逻辑，使用独立的Excel实例，确保资源正确释放"""
         excel_app = None
         try:
             # 为每个线程创建独立的Excel实例
@@ -202,15 +191,19 @@ class ExcelProcessor:
             excel_app.Visible = False
             excel_app.DisplayAlerts = False
             
+            # 打开工作簿
             wb = excel_app.Workbooks.Open(file_path)
-            wb.Save()
-            wb.Close(True)
+            if wb is not None:
+                wb.Save()
+                wb.Close(True)
+                wb = None  # 显式释放工作簿对象
         except Exception as e:
             self.log(f"后处理文件 {file_path} 时出错：{str(e)}")
         finally:
-            # 确保Excel实例被正确关闭
-            if excel_app:
+            # 确保Excel实例被正确关闭和释放
+            if excel_app is not None:
                 try:
                     excel_app.Quit()
+                    excel_app = None  # 显式释放Excel应用程序对象
                 except:
                     pass
