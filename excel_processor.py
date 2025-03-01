@@ -57,17 +57,7 @@ class ExcelProcessor:
 
         # 优化：直接在创建字典时处理数据，避免额外的循环
         master_dict = {}
-        # 优化：直接在创建字典时处理数据，避免额外的循环
-        master_dict = {}
         master_data = master_df.values
-        for row in master_data:
-            key = row[0].strip() if row[0] else ''  # 直接处理空值情况
-            if key:  # 只处理非空key
-                match_val = row[1] if row[1] else ''
-                update_val = row[2] if row[2] else ''
-                if match_val:  # 只存储有效的匹配值
-                    master_dict[key] = [match_val, update_val]
-
         for row in master_data:
             key = row[0].strip() if row[0] else ''  # 直接处理空值情况
             if key:  # 只处理非空key
@@ -78,7 +68,6 @@ class ExcelProcessor:
 
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
-        # 添加调试日志，打印特定key的内容
         # 添加调试日志，打印特定key的内容
         # debug_key1 = "4D03332141C5B492D7E97891939EDDFB"
         # debug_key2 = "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
