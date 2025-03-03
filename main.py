@@ -18,9 +18,12 @@ class ExcelUpdaterGUI:
         self.target_folder = ""
         self.processor = ExcelProcessor(print)
 
-        # 添加匹配列和更新列选择
+        # 添加匹配列、内容列和更新列选择
         self.match_column_var = tk.StringVar(value="2")
         self.match_column_options = ["2", "3"]
+        
+        self.content_column_var = tk.StringVar(value="4")
+        self.content_column_options = ["4","5","6","7","8","9","10","11"]
         
         self.update_column_var = tk.StringVar(value="3")
         self.update_column_options = ["3", "4"]
@@ -107,7 +110,17 @@ class ExcelUpdaterGUI:
         match_dropdown.pack(side=tk.LEFT)
         tk.Label(match_frame, text="列", **label_style).pack(side=tk.LEFT)
 
-        # 更新列选择
+        # 内容列选择（从master表获取数据的列）
+        content_frame = tk.Frame(self.updater_frame, bg='#f0f0f0')
+        content_frame.pack(pady=10)
+        tk.Label(content_frame, text="内容列：", **label_style).pack(side=tk.LEFT)
+        content_dropdown = tk.OptionMenu(content_frame, self.content_column_var, *self.content_column_options)
+        content_dropdown.config(bg='#4a90e2', fg='white', font=('Arial', 10), width=5)
+        content_dropdown["menu"].config(bg='white', fg='#333333')
+        content_dropdown.pack(side=tk.LEFT)
+        tk.Label(content_frame, text="列（Master表）", **label_style).pack(side=tk.LEFT)
+
+        # 更新列选择（目标文件要更新的列）
         update_frame = tk.Frame(self.updater_frame, bg='#f0f0f0')
         update_frame.pack(pady=10)
         tk.Label(update_frame, text="更新列：", **label_style).pack(side=tk.LEFT)
@@ -115,7 +128,7 @@ class ExcelUpdaterGUI:
         update_dropdown.config(bg='#4a90e2', fg='white', font=('Arial', 10), width=5)
         update_dropdown["menu"].config(bg='white', fg='#333333')
         update_dropdown.pack(side=tk.LEFT)
-        tk.Label(update_frame, text="列", **label_style).pack(side=tk.LEFT)
+        tk.Label(update_frame, text="列（目标文件）", **label_style).pack(side=tk.LEFT)
 
         # 执行按钮
         btn_start = tk.Button(self.updater_frame, text="开始处理", **button_style, command=self.process_files)
@@ -146,11 +159,13 @@ class ExcelUpdaterGUI:
         try:
             # 将下拉菜单选择的值转换为0基索引
             match_column = int(self.match_column_var.get()) - 1
+            content_column = int(self.content_column_var.get()) - 1
             update_column = int(self.update_column_var.get()) - 1
-            if match_column < 0 or update_column < 0:
+            if match_column < 0 or content_column < 0 or update_column < 0:
                 raise ValueError("列索引必须大于0")
-            # 设置匹配列和更新列索引
+            # 设置匹配列、内容列和更新列索引
             self.processor.set_match_column(match_column)
+            self.processor.set_content_column(content_column)
             self.processor.set_update_column(update_column)
         except ValueError as e:
             messagebox.showerror("错误", f"匹配列设置错误：{str(e)}")

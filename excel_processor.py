@@ -12,15 +12,20 @@ class ExcelProcessor:
         self.log_callback = log_callback or (lambda msg: None)
         self.master_columns = []  # 存储列位置信息
         self.match_column_index = 1  # 默认使用第二列作为匹配列
-        self.update_column_index = 2  # 默认更新第三列
+        self.content_column_index = 3  # 默认使用第四列作为内容列（来自master表）
+        self.update_column_index = 2  # 默认更新第三列（目标文件的列）
 
     def set_update_column(self, column_index):
-        """设置要更新的列索引"""
+        """设置要更新的列索引（目标文件的列）"""
         self.update_column_index = column_index
 
     def set_match_column(self, column_index):
         """设置用于匹配的列索引"""
         self.match_column_index = column_index
+        
+    def set_content_column(self, column_index):
+        """设置内容列索引（master表中的列）"""
+        self.content_column_index = column_index
 
     def set_master_file(self, file_path):
         self.master_file_path = file_path
@@ -42,7 +47,7 @@ class ExcelProcessor:
             self.log("正在读取 Master 文件...")
             master_start_time = time.time()
             # 优化：只读取必要的列，并直接指定数据类型为字符串
-            usecols = [1, self.match_column_index+1, self.update_column_index+1]  # 1是Key列(B列)
+            usecols = [1, self.match_column_index+1, self.content_column_index]  # 1是Key列(B列)
             master_df = pd.read_excel(
                 self.master_file_path,
                 engine='openpyxl',
@@ -62,9 +67,9 @@ class ExcelProcessor:
             key = row[0].strip() if row[0] else ''  # 直接处理空值情况
             if key:  # 只处理非空key
                 match_val = row[1] if row[1] else ''
-                update_val = row[2] if row[2] else ''
+                content_val = row[2] if row[2] else ''
                 if match_val:  # 只存储有效的匹配值
-                    master_dict[key] = [match_val, update_val]
+                    master_dict[key] = [match_val, content_val]
 
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
@@ -121,9 +126,7 @@ class ExcelProcessor:
             # 获取目标列的索引
             key_col = 'A'  # 第一列
             match_col = chr(ord('A') + self.match_column_index)  # 匹配列
-            
-            # 逐行处理数据，跳过表头
-            for idx, row in enumerate(ws.iter_rows(min_row=2), start=2):
+            for idx, row in enumerate(ws.rows, start=1):
                 try:
                     # 只读取需要的列
                     key_cell = row[0]
@@ -150,18 +153,24 @@ class ExcelProcessor:
             
             # 如果有更新，重新打开文件进行写入
             if updates:
-                wb = openpyxl.load_workbook(file_path)
-                ws = wb.active
-                
-                # 批量更新单元格
-                for (row, col), value in updates.items():
-                    ws.cell(row=row, column=col).value = value
                 try:
+                    wb = openpyxl.load_workbook(file_path)
+                    ws = wb.active
+                    
+                    # 批量更新单元格
+                    for (row, col), value in updates.items():
+                        # 使用正确的方法获取和设置单元格值
+                        cell = ws._get_cell(row, col)
+                        if cell is None:
+                            cell = ws._cell(row, col)
+                        cell.value = value
+                        
                     wb.save(file_path)
                 except Exception:
                     return 0
                 finally:
-                    wb.close()
+                    if wb:
+                        wb.close()
                     
         except Exception as e:
             return 0
@@ -172,25 +181,37 @@ class ExcelProcessor:
         """使用win32com.client处理Excel文件以确保兼容性，采用最简单的单线程处理方式"""
         try:
             post_process_start_time = time.time()
+            total_files = len(file_paths)
             
-            # 简单循环处理每个文件
-            for file_path in file_paths:
-                self._process_single_file_post(file_path)
+            # 创建一个Excel实例供所有文件使用
+            excel_app = Dispatch('Excel.Application')
+            excel_app.Visible = False
+            excel_app.DisplayAlerts = False
+            
+            try:
+                # 简单循环处理每个文件
+                for index, file_path in enumerate(file_paths, 1):
+                    self.log(f"正在后处理文件 ({index}/{total_files}): {os.path.basename(file_path)}")
+                    self._process_single_file_post(file_path, excel_app)
+
+            finally:
+                # 确保Excel实例被正确关闭和释放
+                if excel_app is not None:
+                    try:
+                        excel_app.Quit()
+                    except:
+                        pass
+                    excel_app = None
             
             post_process_end_time = time.time()
             self.log(f"后处理步骤耗时: {post_process_end_time - post_process_start_time:.2f}秒")
                     
         except Exception as e:
             self.log(f"后处理步骤失败：{str(e)}")
-    def _process_single_file_post(self, file_path):
-        """处理单个文件的后处理逻辑，使用独立的Excel实例，确保资源正确释放"""
-        excel_app = None
+    
+    def _process_single_file_post(self, file_path, excel_app):
+        """处理单个文件的后处理逻辑，使用共享的Excel实例"""
         try:
-            # 为每个线程创建独立的Excel实例
-            excel_app = Dispatch('Excel.Application')
-            excel_app.Visible = False
-            excel_app.DisplayAlerts = False
-            
             # 打开工作簿
             wb = excel_app.Workbooks.Open(file_path)
             if wb is not None:
@@ -198,7 +219,7 @@ class ExcelProcessor:
                 wb.Close(True)
                 wb = None  # 显式释放工作簿对象
         except Exception as e:
-            self.log(f"后处理文件 {file_path} 时出错：{str(e)}")
+            self.log(f"后处理文件 {os.path.basename(file_path)} 时出错：{str(e)}")
         finally:
             # 确保Excel实例被正确关闭和释放
             if excel_app is not None:
