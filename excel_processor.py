@@ -13,6 +13,10 @@ class ExcelProcessor:
         self.master_columns = []  # 存储列位置信息
         self.match_column_index = 1  # 默认使用第二列作为匹配列
         self.update_column_index = 2  # 默认更新第三列
+        self.debug_keys = [
+            "4D03332141C5B492D7E97891939EDDFB",
+            "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
+        ]
 
     def set_update_column(self, column_index):
         """设置要更新的列索引"""
@@ -30,6 +34,18 @@ class ExcelProcessor:
 
     def log(self, message):
         self.log_callback(message)
+
+    def debug_key_info(self, master_dict, keys_to_check):
+        """调试特定key的信息
+        Args:
+            master_dict: 主数据字典
+            keys_to_check: 要检查的key列表
+        """
+        for key in keys_to_check:
+            if key in master_dict:
+                self.log(f"Debug - Key '{key}' 的内容: {master_dict[key]}")
+            else:
+                self.log(f"Debug - 未找到Key: {key}")
 
     def process_files(self):
         if not self.master_file_path or not self.target_folder:
@@ -69,13 +85,7 @@ class ExcelProcessor:
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
         # 添加调试日志，打印特定key的内容
-        # debug_key1 = "4D03332141C5B492D7E97891939EDDFB"
-        # debug_key2 = "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
-        # if debug_key1 or debug_key2 in master_dict:
-        #     self.log(f"Debug - Key '{debug_key1}' 的内容: {master_dict[debug_key1]}")
-        #     self.log(f"Debug - Key '{debug_key2}' 的内容: {master_dict[debug_key2]}")
-        # else:
-        #     self.log(f"Debug - 未找到Key: {debug_key1}")
+        self.debug_key_info(master_dict, self.debug_keys)
 
         # 收集目标文件
         
@@ -172,17 +182,35 @@ class ExcelProcessor:
         """使用win32com.client处理Excel文件以确保兼容性，采用最简单的单线程处理方式"""
         try:
             post_process_start_time = time.time()
+            total_files = len(file_paths)
             
-            # 简单循环处理每个文件
-            for file_path in file_paths:
-                self._process_single_file_post(file_path)
+            # 创建一个Excel实例供所有文件使用
+            excel_app = Dispatch('Excel.Application')
+            excel_app.Visible = False
+            excel_app.DisplayAlerts = False
+            
+            try:
+                # 简单循环处理每个文件
+                for index, file_path in enumerate(file_paths, 1):
+                    self.log(f"正在后处理文件 ({index}/{total_files}): {os.path.basename(file_path)}")
+                    self._process_single_file_post(file_path, excel_app)
+
+            finally:
+                # 确保Excel实例被正确关闭和释放
+                if excel_app is not None:
+                    try:
+                        excel_app.Quit()
+                    except:
+                        pass
+                    excel_app = None
             
             post_process_end_time = time.time()
             self.log(f"后处理步骤耗时: {post_process_end_time - post_process_start_time:.2f}秒")
                     
         except Exception as e:
             self.log(f"后处理步骤失败：{str(e)}")
-    def _process_single_file_post(self, file_path):
+    
+    def _process_single_file_post(self, file_path, excel_app):
         """处理单个文件的后处理逻辑，使用独立的Excel实例，确保资源正确释放"""
         excel_app = None
         try:
