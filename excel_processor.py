@@ -53,6 +53,8 @@ class ExcelProcessor:
                 engine='openpyxl',
                 dtype={col: str for col in range(len(usecols))},  # 直接指定所有列为字符串类型
                 keep_default_na=False,
+                na_values=[''],  # 只将空字符串视为NA
+                na_filter=False,  # 禁用NA过滤，保持原始值
                 usecols=usecols
             )
             master_end_time = time.time()
@@ -74,11 +76,9 @@ class ExcelProcessor:
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
         # 添加调试日志，打印特定key的内容
-        # debug_key1 = "4D03332141C5B492D7E97891939EDDFB"
-        # debug_key2 = "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
+        # debug_key1 = "LDLG_Text_ZH_read_L_book_0101010902003_Line_0"
         # if debug_key1 or debug_key2 in master_dict:
         #     self.log(f"Debug - Key '{debug_key1}' 的内容: {master_dict[debug_key1]}")
-        #     self.log(f"Debug - Key '{debug_key2}' 的内容: {master_dict[debug_key2]}")
         # else:
         #     self.log(f"Debug - 未找到Key: {debug_key1}")
 
@@ -135,7 +135,7 @@ class ExcelProcessor:
                     # 确保单元格值转换为字符串
                     target_key = str(key_cell.value).strip() if key_cell.value else ''
                     target_match_value = str(match_cell.value) if match_cell.value else ''
-                    
+
                     if not target_key or not target_match_value:
                         continue
                     
