@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from excel_processor import ExcelProcessor
 from excel_cleaner import ExcelColumnClearer
+from excel_compatibility_processor import ExcelCompatibilityProcessor
 
 class ExcelUpdaterGUI:
     def __init__(self):
@@ -67,10 +68,15 @@ class ExcelUpdaterGUI:
         # 创建列清空工具选项卡
         self.clearer_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.clearer_frame, text='列清空')
-
-        # 初始化两个工具
+        
+        # 创建兼容性处理选项卡
+        self.compatibility_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.compatibility_frame, text='兼容性处理')
+        
+        # 初始化所有工具
         self.init_updater()
         self.init_clearer()
+        self.init_compatibility()
 
     def init_updater(self):
         # 统一按钮样式
@@ -231,6 +237,48 @@ class ExcelUpdaterGUI:
             messagebox.showinfo("完成", f"共处理 {processed_files} 个文件。")
         except ValueError as e:
             messagebox.showerror("错误", f"列号设置错误：{str(e)}")
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+
+    def init_compatibility(self):
+        self.compatibility_processor = ExcelCompatibilityProcessor()
+
+        # 统一按钮样式
+        button_style = {
+            'bg': '#4a90e2',
+            'fg': 'white',
+            'font': ('Arial', 10),
+            'relief': 'raised',
+            'padx': 20
+        }
+        
+        # 统一标签样式
+        label_style = {
+            'bg': '#f0f0f0',  # 标签背景色
+            'fg': '#333333',  # 标签文字颜色
+            'font': ('Arial', 10)
+        }
+
+        # 文件夹选择按钮
+        btn_folder = tk.Button(self.compatibility_frame, text="选择目标文件夹", **button_style, command=self.select_compatibility_folder)
+        btn_folder.pack(pady=10)
+        self.compatibility_folder_label = tk.Label(self.compatibility_frame, text="未选择文件夹", **label_style)
+        self.compatibility_folder_label.pack()
+
+        # 执行按钮
+        btn_start = tk.Button(self.compatibility_frame, text="开始处理", **button_style, command=self.process_compatibility)
+        btn_start.pack(pady=10)
+
+    def select_compatibility_folder(self):
+        folder_path = filedialog.askdirectory(title="选择目标文件夹")
+        if folder_path:
+            self.compatibility_folder_label.config(text=f"已选择：{os.path.basename(folder_path)}")
+            self.compatibility_processor.set_folder_path(folder_path)
+
+    def process_compatibility(self):
+        try:
+            processed_files = self.compatibility_processor.process_files()
+            messagebox.showinfo("完成", f"共处理 {processed_files} 个文件。")
         except Exception as e:
             messagebox.showerror("错误", str(e))
 
