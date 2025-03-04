@@ -107,15 +107,16 @@ class ExcelProcessor:
             updated_count = sum(future.result() for future in concurrent.futures.as_completed(futures))
         process_end_time = time.time()
 
-        total_time = time.time() - start_time
         self.log(f"文件处理耗时: {process_end_time - process_start_time:.2f}秒")
-        self.log(f"总耗时: {total_time:.2f}秒")
         self.log(f"处理完成，共更新 {updated_count} 处数据")
 
         # 添加后处理步骤
         self.log("开始后处理步骤...")
         self._post_process(file_paths)
         self.log("后处理步骤完成")
+
+        total_time = time.time() - start_time
+        self.log(f"总耗时: {total_time:.2f}秒")
 
         return updated_count
 
