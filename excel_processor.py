@@ -14,6 +14,10 @@ class ExcelProcessor:
         self.match_column_index = 1  # 默认使用第二列作为匹配列
         self.content_column_index = 3  # 默认使用第四列作为内容列（来自master表）
         self.update_column_index = 2  # 默认更新第三列（目标文件的列）
+        self.debug_keys = [
+            "4D03332141C5B492D7E97891939EDDFB",
+            "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
+        ]
 
     def set_update_column(self, column_index):
         """设置要更新的列索引（目标文件的列）"""
@@ -35,6 +39,18 @@ class ExcelProcessor:
 
     def log(self, message):
         self.log_callback(message)
+
+    def debug_key_info(self, master_dict, keys_to_check):
+        """调试特定key的信息
+        Args:
+            master_dict: 主数据字典
+            keys_to_check: 要检查的key列表
+        """
+        for key in keys_to_check:
+            if key in master_dict:
+                self.log(f"Debug - Key '{key}' 的内容: {master_dict[key]}")
+            else:
+                self.log(f"Debug - 未找到Key: {key}")
 
     def process_files(self):
         if not self.master_file_path or not self.target_folder:
@@ -76,11 +92,7 @@ class ExcelProcessor:
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
         # 添加调试日志，打印特定key的内容
-        # debug_key1 = "LDLG_Text_ZH_read_L_book_0101010902003_Line_0"
-        # if debug_key1 or debug_key2 in master_dict:
-        #     self.log(f"Debug - Key '{debug_key1}' 的内容: {master_dict[debug_key1]}")
-        # else:
-        #     self.log(f"Debug - 未找到Key: {debug_key1}")
+        self.debug_key_info(master_dict, self.debug_keys)
 
         # 收集目标文件
         
@@ -102,15 +114,17 @@ class ExcelProcessor:
             updated_count = sum(future.result() for future in concurrent.futures.as_completed(futures))
         process_end_time = time.time()
 
-        total_time = time.time() - start_time
+        
         self.log(f"文件处理耗时: {process_end_time - process_start_time:.2f}秒")
-        self.log(f"总耗时: {total_time:.2f}秒")
         self.log(f"处理完成，共更新 {updated_count} 处数据")
 
         # 添加后处理步骤
         self.log("开始后处理步骤...")
         self._post_process(file_paths)
         self.log("后处理步骤完成")
+
+        total_time = time.time() - start_time
+        self.log(f"总耗时: {total_time:.2f}秒")
 
         return updated_count
 
