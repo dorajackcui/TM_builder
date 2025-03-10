@@ -15,7 +15,7 @@ class ExcelProcessor:
         self.content_column_index = 3  # 默认使用第四列作为内容列（来自master表）
         self.update_column_index = 2  # 默认更新第三列（目标文件的列）
         self.debug_keys = [
-            "4D03332141C5B492D7E97891939EDDFB",
+            "AD159EAE417F98EE46FCF697E15D4FFD",
             "SysPhotograph.WBP_Photograph_EdtPage.StrengthText,SysPhotograph"
         ]
 
@@ -152,13 +152,14 @@ class ExcelProcessor:
 
                     if not target_key or not target_match_value:
                         continue
-                    
+
                     if target_key in master_dict:
                         master_values = master_dict[target_key]
                         if target_match_value == master_values[0]:
                             update_col = self.update_column_index + 1
                             updates[(idx, update_col)] = master_values[1]
                             updated += 1
+
                 except Exception:
                     continue
             
