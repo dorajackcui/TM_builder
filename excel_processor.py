@@ -47,9 +47,13 @@ class ExcelProcessor:
             keys_to_check: 要检查的key列表
         """
         for key in keys_to_check:
-            if key in master_dict:
-                self.log(f"Debug - Key '{key}' 的内容: {master_dict[key]}")
-            else:
+            found = False
+            # 由于使用combined key，需要查找所有以该key开头的组合键
+            for combined_key, value in master_dict.items():
+                if combined_key.startswith(f"{key}|"):
+                    self.log(f"Debug - Key '{key}' 的组合键 '{combined_key}' 内容: {value}")
+                    found = True
+            if not found:
                 self.log(f"Debug - 未找到Key: {key}")
 
     def process_files(self):
@@ -87,12 +91,15 @@ class ExcelProcessor:
                 match_val = row[1] if row[1] else ''
                 content_val = row[2] if row[2] else ''
                 if match_val:  # 只存储有效的匹配值
-                    master_dict[key] = [match_val, content_val]
+                    # 使用key+匹配列内容作为combined key
+                    combined_key = f"{key}|{match_val}"
+                    master_dict[combined_key] = content_val
+
 
         self.log(f"Master 中共找到 {len(master_dict)} 个有效 Key")
         
         # 添加调试日志，打印特定key的内容
-        self.debug_key_info(master_dict, self.debug_keys)
+        # self.debug_key_info(master_dict, self.debug_keys)
 
         # 收集目标文件
         
@@ -153,12 +160,14 @@ class ExcelProcessor:
                     if not target_key or not target_match_value:
                         continue
 
-                    if target_key in master_dict:
-                        master_values = master_dict[target_key]
-                        if target_match_value == master_values[0]:
-                            update_col = self.update_column_index + 1
-                            updates[(idx, update_col)] = master_values[1]
-                            updated += 1
+                    # 创建与master_dict相同格式的combined key
+                    combined_key = f"{target_key}|{target_match_value}"
+                    
+                    # 使用combined key进行查找
+                    if combined_key in master_dict:
+                        update_col = self.update_column_index + 1
+                        updates[(idx, update_col)] = master_dict[combined_key]
+                        updated += 1
 
                 except Exception:
                     continue
@@ -206,7 +215,8 @@ class ExcelProcessor:
             try:
                 # 简单循环处理每个文件
                 for index, file_path in enumerate(file_paths, 1):
-                    self.log(f"正在后处理文件 ({index}/{total_files}): {os.path.basename(file_path)}")
+                    # self.log(f"\r正在后处理文件 ({index}/{total_files}): {os.path.basename(file_path)}")
+                    print(f"\r正在后处理文件 ({index}/{total_files}): {os.path.basename(file_path)}", end="")
                     self._process_single_file_post(file_path, excel_app)
 
             finally:

@@ -1,4 +1,5 @@
 import os
+import time
 from win32com.client import Dispatch
 
 class ExcelColumnClearer:
@@ -18,6 +19,16 @@ class ExcelColumnClearer:
 
         processed_files = 0
         excel_app = None
+        
+        # 计算总文件数
+        total_files = 0
+        for root, dirs, files in os.walk(self.folder_path):
+            for file in files:
+                if file.endswith(('.xlsx', '.xls')):
+                    total_files += 1
+        
+        print(f"共找到 {total_files} 个Excel文件")
+        start_time = time.time()
 
         try:
             # 创建Excel应用实例
@@ -30,6 +41,9 @@ class ExcelColumnClearer:
                 for file in files:
                     if file.endswith(('.xlsx', '.xls')):
                         file_path = os.path.join(root, file)
+                        processed_files += 1
+                        # 显示进度
+                        print(f"\r正在处理: {processed_files}/{total_files} - {file}", end="")
                         try:
                             # 使用COM接口打开工作簿
                             wb = excel_app.Workbooks.Open(file_path)
@@ -51,7 +65,6 @@ class ExcelColumnClearer:
                             # 保存并关闭工作簿
                             wb.Save()
                             wb.Close()
-                            processed_files += 1
 
                         except Exception as e:
                             print(f"处理文件 {file} 时出错：{str(e)}")
@@ -70,4 +83,7 @@ class ExcelColumnClearer:
                 except:
                     pass
 
+        # 完成后显示总结
+        total_time = time.time() - start_time
+        print(f"\n处理完成! 共处理 {processed_files} 个文件，耗时: {total_time:.2f}秒")
         return processed_files
