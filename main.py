@@ -5,12 +5,13 @@ from tkinter import filedialog, messagebox, ttk
 from excel_processor import ExcelProcessor
 from excel_cleaner import ExcelColumnClearer
 from excel_compatibility_processor import ExcelCompatibilityProcessor
+from multi_column_processor import MultiColumnExcelProcessor
 
 class ExcelUpdaterGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Excel 工具集")
-        self.root.geometry("400x400")
+        self.root.geometry("400x500")
         
         # 设置窗口背景色
         self.root.configure(bg='#f0f0f0')
@@ -73,10 +74,15 @@ class ExcelUpdaterGUI:
         self.compatibility_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.compatibility_frame, text='兼容性处理')
         
+        # 创建多列更新选项卡
+        self.multi_column_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.multi_column_frame, text='多列更新')
+        
         # 初始化所有工具
         self.init_updater()
         self.init_clearer()
         self.init_compatibility()
+        self.init_multi_column()
 
     def init_updater(self):
         # 统一按钮样式
@@ -279,6 +285,125 @@ class ExcelUpdaterGUI:
         try:
             processed_files = self.compatibility_processor.process_files()
             messagebox.showinfo("完成", f"共处理 {processed_files} 个文件。")
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+            
+    def init_multi_column(self):
+        self.multi_processor = MultiColumnExcelProcessor(print)
+
+        # 统一按钮样式
+        button_style = {
+            'bg': '#4a90e2',
+            'fg': 'white',
+            'font': ('Arial', 10),
+            'relief': 'raised',
+            'padx': 20
+        }
+        
+        # 统一标签样式
+        label_style = {
+            'bg': '#f0f0f0',  # 标签背景色
+            'fg': '#333333',  # 标签文字颜色
+            'font': ('Arial', 10)
+        }
+
+        # 文件选择按钮
+        btn_master = tk.Button(self.multi_column_frame, text="选择 Master 总表", **button_style, command=self.select_multi_master_file)
+        btn_master.pack(pady=10)
+        self.multi_master_label = tk.Label(self.multi_column_frame, text="未选择文件", **label_style)
+        self.multi_master_label.pack()
+
+        btn_folder = tk.Button(self.multi_column_frame, text="选择目标文件夹", **button_style, command=self.select_multi_target_folder)
+        btn_folder.pack(pady=10)
+        self.multi_folder_label = tk.Label(self.multi_column_frame, text="未选择文件夹", **label_style)
+        self.multi_folder_label.pack()
+
+        # 匹配列选择
+        self.multi_match_column_var = tk.StringVar(value="3")
+        self.multi_match_column_options = ["4", "3"]
+        match_frame = tk.Frame(self.multi_column_frame, bg='#f0f0f0')
+        match_frame.pack(pady=10)
+        tk.Label(match_frame, text="匹配列：", **label_style).pack(side=tk.LEFT)
+        match_dropdown = tk.OptionMenu(match_frame, self.multi_match_column_var, *self.multi_match_column_options)
+        match_dropdown.config(bg='#4a90e2', fg='white', font=('Arial', 10), width=5)
+        match_dropdown["menu"].config(bg='white', fg='#333333')
+        match_dropdown.pack(side=tk.LEFT)
+        tk.Label(match_frame, text="列", **label_style).pack(side=tk.LEFT)
+
+        # 开始内容列选择（从master表获取数据的起始列）
+        self.multi_start_column_var = tk.StringVar(value="5")
+        self.multi_start_column_options = ["4","5"]
+        start_frame = tk.Frame(self.multi_column_frame, bg='#f0f0f0')
+        start_frame.pack(pady=10)
+        tk.Label(start_frame, text="开始内容列：", **label_style).pack(side=tk.LEFT)
+        start_dropdown = tk.OptionMenu(start_frame, self.multi_start_column_var, *self.multi_start_column_options)
+        start_dropdown.config(bg='#4a90e2', fg='white', font=('Arial', 10), width=5)
+        start_dropdown["menu"].config(bg='white', fg='#333333')
+        start_dropdown.pack(side=tk.LEFT)
+        tk.Label(start_frame, text="列（Master表）", **label_style).pack(side=tk.LEFT)
+
+        # 更新开始列选择（目标文件要更新的起始列）
+        self.multi_update_start_column_var = tk.StringVar(value="5")
+        self.multi_update_start_column_options = ["4", "5"]
+        update_frame = tk.Frame(self.multi_column_frame, bg='#f0f0f0')
+        update_frame.pack(pady=10)
+        tk.Label(update_frame, text="更新开始列：", **label_style).pack(side=tk.LEFT)
+        update_dropdown = tk.OptionMenu(update_frame, self.multi_update_start_column_var, *self.multi_update_start_column_options)
+        update_dropdown.config(bg='#4a90e2', fg='white', font=('Arial', 10), width=5)
+        update_dropdown["menu"].config(bg='white', fg='#333333')
+        update_dropdown.pack(side=tk.LEFT)
+        tk.Label(update_frame, text="列（目标文件）", **label_style).pack(side=tk.LEFT)
+        
+        # 列数选择
+        self.multi_column_count_var = tk.StringVar(value="7")
+        self.multi_column_count_options = ["8", "7", "6", "5", "4"]
+        count_frame = tk.Frame(self.multi_column_frame, bg='#f0f0f0')
+        count_frame.pack(pady=10)
+        tk.Label(count_frame, text="更新列数：", **label_style).pack(side=tk.LEFT)
+        count_dropdown = tk.OptionMenu(count_frame, self.multi_column_count_var, *self.multi_column_count_options)
+        count_dropdown.config(bg='#4a90e2', fg='white', font=('Arial', 10), width=5)
+        count_dropdown["menu"].config(bg='white', fg='#333333')
+        count_dropdown.pack(side=tk.LEFT)
+        tk.Label(count_frame, text="列", **label_style).pack(side=tk.LEFT)
+
+        # 执行按钮
+        btn_start = tk.Button(self.multi_column_frame, text="开始处理", **button_style, command=self.process_multi_column)
+        btn_start.pack(pady=10)
+        
+    def select_multi_master_file(self):
+        file_path = filedialog.askopenfilename(
+            title="选择 Master 总表",
+            filetypes=[("Excel 文件", "*.xlsx *.xls")]
+        )
+        if file_path:
+            self.multi_master_label.config(text=f"已选择：{os.path.basename(file_path)}")
+            self.multi_processor.set_master_file(file_path)
+
+    def select_multi_target_folder(self):
+        folder_path = filedialog.askdirectory(title="选择目标文件夹")
+        if folder_path:
+            self.multi_folder_label.config(text=f"已选择：{os.path.basename(folder_path)}")
+            self.multi_processor.set_target_folder(folder_path)
+            
+    def process_multi_column(self):
+        try:
+            # 将下拉菜单选择的值转换为0基索引
+            match_column = int(self.multi_match_column_var.get()) - 1
+            start_column = int(self.multi_start_column_var.get()) - 1
+            update_start_column = int(self.multi_update_start_column_var.get()) - 1
+            column_count = int(self.multi_column_count_var.get())
+            
+            if match_column < 0 or start_column < 0 or update_start_column < 0 or column_count <= 0:
+                raise ValueError("列索引必须大于0，列数必须大于0")
+                
+            # 设置匹配列、开始列、更新开始列和列数
+            self.multi_processor.set_match_column(match_column)
+            self.multi_processor.set_start_column(start_column)
+            self.multi_processor.set_update_start_column(update_start_column)
+            self.multi_processor.set_column_count(column_count)
+            
+            updated_count = self.multi_processor.process_files()
+            messagebox.showinfo("完成", f"共更新 {updated_count} 处数据。")
         except Exception as e:
             messagebox.showerror("错误", str(e))
 
