@@ -1,54 +1,48 @@
 import os
-import time
-from win32com.client import Dispatch
+import win32com.client
 
 class ExcelColumnClearer:
     def __init__(self):
         self.folder_path = ""
         self.column_number = 0
+        self.excel = None
 
-    def set_folder_path(self, folder_path):
-        self.folder_path = folder_path
+    def set_folder_path(self, path):
+        self.folder_path = path
 
-    def set_column_number(self, column_number):
-        self.column_number = column_number
+    def set_column_number(self, number):
+        self.column_number = number
+
+    def _init_excel(self):
+        if not self.excel:
+            self.excel = win32com.client.Dispatch("Excel.Application")
+            self.excel.Visible = False
+            self.excel.DisplayAlerts = False
+
+    def _quit_excel(self):
+        if self.excel:
+            self.excel.Quit()
+            self.excel = None
 
     def clear_column_in_files(self):
-        if not self.folder_path or self.column_number <= 0:
-            raise ValueError("请先设置有效的文件夹路径和列号")
-
         processed_files = 0
-        excel_app = None
-        
-        # 计算总文件数
-        total_files = 0
-        for root, dirs, files in os.walk(self.folder_path):
-            for file in files:
-                if file.endswith(('.xlsx', '.xls')):
-                    total_files += 1
-        
-        print(f"共找到 {total_files} 个Excel文件")
-        start_time = time.time()
+        total_files = sum(1 for _, _, files in os.walk(self.folder_path) 
+                         for file in files if file.endswith(('.xlsx', '.xls')))
 
         try:
-            # 创建Excel应用实例
-            excel_app = Dispatch('Excel.Application')
-            excel_app.Visible = False
-            excel_app.DisplayAlerts = False
-
-            # 遍历目标文件夹中的所有Excel文件
+            self._init_excel()
+            
             for root, dirs, files in os.walk(self.folder_path):
                 for file in files:
                     if file.endswith(('.xlsx', '.xls')):
                         file_path = os.path.join(root, file)
-                        processed_files += 1
-                        # 显示进度
-                        print(f"\r正在处理: {processed_files}/{total_files} - {file}", end="")
                         try:
-                            # 使用COM接口打开工作簿
-                            wb = excel_app.Workbooks.Open(file_path)
+                            processed_files += 1
+                            print(f"正在处理: {file} ({processed_files}/{total_files})")
+                            
+                            wb = self.excel.Workbooks.Open(file_path)
                             ws = wb.ActiveSheet
-
+                            
                             # 清空指定列的内容（跳过表头）
                             last_row = ws.UsedRange.Rows.Count
                             column = ws.Columns(self.column_number)
@@ -62,28 +56,84 @@ class ExcelColumnClearer:
                             # 清空内容
                             clear_range.ClearContents()
                             
-                            # 保存并关闭工作簿
                             wb.Save()
                             wb.Close()
 
                         except Exception as e:
                             print(f"处理文件 {file} 时出错：{str(e)}")
-                            if 'wb' in locals():
-                                try:
-                                    wb.Close(False)
-                                except:
-                                    pass
                             continue
-
         finally:
-            # 确保Excel实例被正确关闭
-            if excel_app is not None:
-                try:
-                    excel_app.Quit()
-                except:
-                    pass
+            self._quit_excel()
 
-        # 完成后显示总结
-        total_time = time.time() - start_time
-        print(f"\n处理完成! 共处理 {processed_files} 个文件，耗时: {total_time:.2f}秒")
+        return processed_files
+
+    def insert_column_in_files(self):
+        processed_files = 0
+        total_files = sum(1 for _, _, files in os.walk(self.folder_path) 
+                         for file in files if file.endswith(('.xlsx', '.xls')))
+
+        try:
+            self._init_excel()
+            
+            for root, dirs, files in os.walk(self.folder_path):
+                for file in files:
+                    if file.endswith(('.xlsx', '.xls')):
+                        file_path = os.path.join(root, file)
+                        try:
+                            processed_files += 1
+                            print(f"\r正在处理: {file} ({processed_files}/{total_files})", end="")
+                            
+                            wb = self.excel.Workbooks.Open(file_path)
+                            ws = wb.ActiveSheet
+                            
+                            # 在指定位置插入新列
+                            column_range = ws.Columns(self.column_number)
+                            column_range.Insert()
+                            
+                            # 设置新列的标题
+                            ws.Cells(1, self.column_number).Value = 'target'
+                            
+                            wb.Save()
+                            wb.Close()
+
+                        except Exception as e:
+                            print(f"处理文件 {file} 时出错：{str(e)}")
+                            continue
+        finally:
+            self._quit_excel()
+
+        return processed_files
+
+    def delete_column_in_files(self):
+        processed_files = 0
+        total_files = sum(1 for _, _, files in os.walk(self.folder_path) 
+                         for file in files if file.endswith(('.xlsx', '.xls')))
+
+        try:
+            self._init_excel()
+            
+            for root, dirs, files in os.walk(self.folder_path):
+                for file in files:
+                    if file.endswith(('.xlsx', '.xls')):
+                        file_path = os.path.join(root, file)
+                        try:
+                            processed_files += 1
+                            print(f"正在处理: {file} ({processed_files}/{total_files})")
+                            
+                            wb = self.excel.Workbooks.Open(file_path)
+                            ws = wb.ActiveSheet
+                            
+                            # 删除指定列
+                            column_range = ws.Columns(self.column_number)
+                            column_range.Delete()
+                            
+                            wb.Save()
+                            wb.Close()
+
+                        except Exception as e:
+                            print(f"处理文件 {file} 时出错：{str(e)}")
+                            continue
+        finally:
+            self._quit_excel()
+
         return processed_files

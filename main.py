@@ -217,15 +217,21 @@ class ExcelUpdaterGUI:
         # 列号输入框
         column_frame = tk.Frame(self.clearer_frame, bg='#f0f0f0')
         column_frame.pack(pady=10)
-        tk.Label(column_frame, text="清空列号：", **label_style).pack(side=tk.LEFT)
+        tk.Label(column_frame, text="列号：", **label_style).pack(side=tk.LEFT)
         self.column_var = tk.StringVar(value="")
         column_entry = tk.Entry(column_frame, textvariable=self.column_var, width=5)
         column_entry.pack(side=tk.LEFT)
         tk.Label(column_frame, text="列", **label_style).pack(side=tk.LEFT)
 
-        # 执行按钮
-        btn_start = tk.Button(self.clearer_frame, text="开始清空", **button_style, command=self.clear_column)
-        btn_start.pack(pady=10)
+        # 功能按钮
+        btn_clear = tk.Button(self.clearer_frame, text="清空列", **button_style, command=self.clear_column)
+        btn_clear.pack(pady=5)
+        
+        btn_insert = tk.Button(self.clearer_frame, text="插入列", **button_style, command=self.insert_column)
+        btn_insert.pack(pady=5)
+        
+        btn_delete = tk.Button(self.clearer_frame, text="删除列", **button_style, command=self.delete_column)
+        btn_delete.pack(pady=5)
 
     def select_clearer_folder(self):
         folder_path = filedialog.askdirectory(title="选择目标文件夹")
@@ -240,6 +246,38 @@ class ExcelUpdaterGUI:
                 raise ValueError("列号必须大于0")
             self.clearer.set_column_number(column_number)
             processed_files = self.clearer.clear_column_in_files()
+            messagebox.showinfo("完成", f"共处理 {processed_files} 个文件。")
+        except ValueError as e:
+            messagebox.showerror("错误", f"列号设置错误：{str(e)}")
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+
+    def insert_column(self):
+        try:
+            column_number = int(self.column_var.get())
+            if column_number <= 0:
+                raise ValueError("列号必须大于0")
+            self.clearer.set_column_number(column_number)
+            processed_files = self.clearer.insert_column_in_files()
+            messagebox.showinfo("完成", f"共处理 {processed_files} 个文件。")
+        except ValueError as e:
+            messagebox.showerror("错误", f"列号设置错误：{str(e)}")
+        except Exception as e:
+            messagebox.showerror("错误", str(e))
+
+    def delete_column(self):
+        try:
+            column_number = int(self.column_var.get())
+            if column_number <= 0:
+                raise ValueError("列号必须大于0")
+            self.clearer.set_column_number(column_number)
+
+            # 弹出确认对话框
+            confirm = messagebox.askyesno("确认操作", f"确定要删除所有Excel文件的第{column_number}列吗？\n此操作不可撤销！")
+            if not confirm:
+                return
+
+            processed_files = self.clearer.delete_column_in_files()
             messagebox.showinfo("完成", f"共处理 {processed_files} 个文件。")
         except ValueError as e:
             messagebox.showerror("错误", f"列号设置错误：{str(e)}")
